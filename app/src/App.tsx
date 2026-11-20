@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useExperiment, useFlagsmith } from '@flagsmith/flagsmith/react'
 import { CONTROL, CONVERSION_EVENT, FLAG_KEY, toLayout, type CardLayout } from './flagsmith'
-import { loadPosts, savePosts, type Post } from './posts'
+import { createPost, EXAMPLES, fetchPosts, isShared, type NewPost, type Post } from './posts'
 import { PostCard } from './PostCard'
 import { PostForm } from './PostForm'
 
@@ -31,14 +31,25 @@ interface BoardProps {
 }
 
 function Board({ layout, onConversion, offline }: BoardProps) {
-  const [posts, setPosts] = useState<Post[]>(loadPosts)
+  const [posts, setPosts] = useState<Post[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [connected, setConnected] = useState<Set<string>>(new Set())
 
-  const addPost = (post: Post) => {
-    const next = [post, ...posts]
-    setPosts(next)
-    savePosts(next)
+  useEffect(() => {
+    fetchPosts()
+      .then(setPosts)
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const addPost = async (input: NewPost) => {
+    const post = await createPost(input)
+    setPosts((prev) => [post, ...prev])
   }
+
+  // Real posts first; example cards fill the board until there are a few.
+  const shown = posts.length >= 4 ? posts : [...posts, ...EXAMPLES]
 
   const connect = (post: Post) => {
     if (connected.has(post.id)) return
@@ -62,8 +73,13 @@ function Board({ layout, onConversion, offline }: BoardProps) {
 
       <PostForm onSubmit={addPost} />
 
-      <section className="grid">
-        {posts.map((p) => (
+      {!isShared && (
+        <p className="notice">Posts are saved only in this browser (no <code>VITE_SUPABASE_URL</code> set).</p>
+      )}
+      {loadError && <p className="notice">Couldn't load posts right now. Showing examples.</p>}
+
+      <section className="grid" aria-busy={loading}>
+        {shown.map((p) => (
           <PostCard key={p.id} post={p} layout={layout} onConnect={connect} connected={connected.has(p.id)} />
         ))}
       </section>

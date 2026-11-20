@@ -59,3 +59,7 @@ button.connect { width: 100%; background: #2f6fed; color: #fff; border-color: #2
 
 footer { margin-top: 40px; font-size: 0.85rem; color: #777; }
 .muted { color: #aaa; }
+
+.hint { margin: 0; font-size: 0.8rem; color: #777; }
+.error { margin: 0; font-size: 0.9rem; color: #b42318; }
+button:disabled { opacity: 0.6; cursor: default; }

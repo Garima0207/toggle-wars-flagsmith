@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useExperiment, useFlagsmith } from '@flagsmith/flagsmith/react'
+import { useExperiment, useFlagsmith, useFlagsmithLoading } from '@flagsmith/flagsmith/react'
 import { CONTROL, CONVERSION_EVENT, FLAG_KEY, toLayout, type CardLayout } from './flagsmith'
 import { createPost, EXAMPLES, fetchPosts, isShared, type NewPost, type Post } from './posts'
 import { PostCard } from './PostCard'
@@ -11,10 +11,23 @@ export default function App({ flagsmithReady }: { flagsmithReady: boolean }) {
 
 // Reads the experiment flag (recording one exposure for enrolled visitors)
 // and reports conversions back to Flagsmith.
+// Cards stay hidden until Flagsmith answers, so nobody glimpses the other
+// variant first. If Flagsmith is slow or down, fall back to control.
+const FLAG_TIMEOUT_MS = 3000
+
 function ExperimentBoard() {
   const flagsmith = useFlagsmith()
   const flag = useExperiment(FLAG_KEY)
-  const layout = toLayout(flag?.enabled ? flag.value : undefined)
+  const loadingState = useFlagsmithLoading()
+  const [timedOut, setTimedOut] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setTimedOut(true), FLAG_TIMEOUT_MS)
+    return () => clearTimeout(t)
+  }, [])
+
+  const flagsReady = !!loadingState && (!loadingState.isLoading || !!loadingState.error)
+  const layout = flagsReady || timedOut ? toLayout(flag?.enabled ? flag.value : undefined) : null
 
   return (
     <Board
@@ -25,7 +38,7 @@ function ExperimentBoard() {
 }
 
 interface BoardProps {
-  layout: CardLayout
+  layout: CardLayout | null // null while the variant is still being decided
   onConversion: (post: Post) => void
   offline?: boolean
 }
@@ -78,14 +91,22 @@ function Board({ layout, onConversion, offline }: BoardProps) {
       )}
       {loadError && <p className="notice">Couldn't load posts right now. Showing examples.</p>}
 
-      <section className="grid" aria-busy={loading}>
-        {shown.map((p) => (
-          <PostCard key={p.id} post={p} layout={layout} onConnect={connect} connected={connected.has(p.id)} />
-        ))}
-      </section>
+      {layout === null || loading ? (
+        <section className="grid" aria-busy="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="card skeleton" />
+          ))}
+        </section>
+      ) : (
+        <section className="grid">
+          {shown.map((p) => (
+            <PostCard key={p.id} post={p} layout={layout} onConnect={connect} connected={connected.has(p.id)} />
+          ))}
+        </section>
+      )}
 
       <footer>
-        Built with Flagsmith feature flags + Experimentation · <span className="muted">variant: {layout}</span>
+        Built with Flagsmith feature flags + Experimentation · <span className="muted">variant: {layout ?? '…'}</span>
       </footer>
     </main>
   )
